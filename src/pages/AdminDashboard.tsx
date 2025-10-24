@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,19 +6,61 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { LogOut, Users, Calendar, Star, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { user, isAdmin, signOut } = useAuth();
+  const [providers, setProviders] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
 
   useEffect(() => {
-    const isAuth = sessionStorage.getItem("adminAuth");
-    if (!isAuth) {
+    // Check admin access
+    if (!user) {
       navigate("/admin");
+      return;
     }
-  }, [navigate]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem("adminAuth");
+    if (!isAdmin) {
+      toast.error("Access denied. Admin privileges required.");
+      navigate("/");
+      return;
+    }
+
+    // Fetch data
+    fetchData();
+  }, [user, isAdmin, navigate]);
+
+  const fetchData = async () => {
+    // Fetch providers
+    const { data: providersData } = await supabase
+      .from("service_providers")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (providersData) setProviders(providersData);
+
+    // Fetch bookings
+    const { data: bookingsData } = await supabase
+      .from("bookings")
+      .select("*, service_providers(name)")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (bookingsData) setBookings(bookingsData);
+
+    // Fetch reviews
+    const { data: reviewsData } = await supabase
+      .from("reviews")
+      .select("*, service_providers(name)")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (reviewsData) setReviews(reviewsData);
+  };
+
+  const handleLogout = async () => {
+    await signOut();
     toast.success("Logged out successfully");
     navigate("/admin");
   };
@@ -88,21 +130,28 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[1, 2, 3, 4, 5].map((item) => (
-                    <div key={item} className="flex items-center justify-between border-b pb-4 last:border-0">
-                      <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-full bg-muted" />
-                        <div>
-                          <p className="font-medium">Provider Name {item}</p>
-                          <p className="text-sm text-muted-foreground">Healthcare</p>
+                  {providers.length > 0 ? (
+                    providers.map((provider) => (
+                      <div key={provider.id} className="flex items-center justify-between border-b pb-4 last:border-0">
+                        <div className="flex items-center gap-4">
+                          <div 
+                            className="h-12 w-12 rounded-full bg-cover bg-center"
+                            style={{ backgroundImage: `url(${provider.image_url})` }}
+                          />
+                          <div>
+                            <p className="font-medium">{provider.name}</p>
+                            <p className="text-sm text-muted-foreground">{provider.category}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {provider.verified && <Badge variant="secondary">Verified</Badge>}
+                          <Button variant="outline" size="sm">View</Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">Verified</Badge>
-                        <Button variant="outline" size="sm">View</Button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground">No providers yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -116,18 +165,26 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[1, 2, 3, 4, 5].map((item) => (
-                    <div key={item} className="flex items-center justify-between border-b pb-4 last:border-0">
-                      <div>
-                        <p className="font-medium">Booking #{1000 + item}</p>
-                        <p className="text-sm text-muted-foreground">Customer Name - Provider Name</p>
+                  {bookings.length > 0 ? (
+                    bookings.map((booking) => (
+                      <div key={booking.id} className="flex items-center justify-between border-b pb-4 last:border-0">
+                        <div>
+                          <p className="font-medium">{booking.customer_name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {booking.service_providers?.name || "Unknown Provider"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={booking.status === "pending" ? "default" : "secondary"}>
+                            {booking.status}
+                          </Badge>
+                          <Button variant="outline" size="sm">Details</Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge>Pending</Badge>
-                        <Button variant="outline" size="sm">Details</Button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground">No bookings yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -141,25 +198,29 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[1, 2, 3, 4, 5].map((item) => (
-                    <div key={item} className="border-b pb-4 last:border-0">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="font-medium">Customer Name {item}</p>
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          ))}
+                  {reviews.length > 0 ? (
+                    reviews.map((review) => (
+                      <div key={review.id} className="border-b pb-4 last:border-0">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="font-medium">{review.service_providers?.name || "Unknown Provider"}</p>
+                          <div className="flex items-center gap-1">
+                            {[...Array(review.rating)].map((_, i) => (
+                              <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="mb-2 text-sm text-muted-foreground">
+                          {review.comment || "No comment provided"}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm">View</Button>
+                          <Button variant="outline" size="sm">Remove</Button>
                         </div>
                       </div>
-                      <p className="mb-2 text-sm text-muted-foreground">
-                        Great service! Very professional and punctual.
-                      </p>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">Approve</Button>
-                        <Button variant="outline" size="sm">Remove</Button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground">No reviews yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

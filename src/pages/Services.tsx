@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -6,88 +6,105 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Star, MapPin, Search } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Star, MapPin, Search, Navigation } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
-const allProviders = [
-  {
-    id: 1,
-    name: "Dr. Amira Ben Salem",
-    category: "Healthcare",
-    specialty: "General Practitioner",
-    rating: 4.9,
-    reviews: 127,
-    location: "Tunis",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop"
-  },
-  {
-    id: 2,
-    name: "Mohamed Trabelsi",
-    category: "Home Services",
-    specialty: "Licensed Electrician",
-    rating: 4.8,
-    reviews: 89,
-    location: "Sousse",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop"
-  },
-  {
-    id: 3,
-    name: "Leila Mansour",
-    category: "Education",
-    specialty: "Math & Physics Tutor",
-    rating: 5.0,
-    reviews: 156,
-    location: "Sfax",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop"
-  },
-  {
-    id: 4,
-    name: "Karim Bouazizi",
-    category: "Home Services",
-    specialty: "Professional Plumber",
-    rating: 4.7,
-    reviews: 94,
-    location: "Tunis",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop"
-  },
-  {
-    id: 5,
-    name: "Salma Hamdi",
-    category: "Wellness",
-    specialty: "Yoga & Fitness Instructor",
-    rating: 4.9,
-    reviews: 112,
-    location: "La Marsa",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop"
-  },
-  {
-    id: 6,
-    name: "Youssef Gharbi",
-    category: "Professional Services",
-    specialty: "Corporate Lawyer",
-    rating: 4.8,
-    reviews: 78,
-    location: "Tunis",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop"
-  }
-];
+interface Provider {
+  id: string;
+  name: string;
+  category: string;
+  specialty: string;
+  rating: number;
+  review_count: number;
+  location_name: string;
+  latitude: number;
+  longitude: number;
+  verified: boolean;
+  image_url: string;
+  distance?: number;
+}
 
 const Services = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { location, loading: locationLoading, requestLocation, calculateDistance } = useGeolocation();
+  const [allProviders, setAllProviders] = useState<Provider[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [sortBy, setSortBy] = useState("distance");
 
-  const filteredProviders = allProviders.filter((provider) => {
+  useEffect(() => {
+    // Check if user is authenticated
+    if (!user) {
+      toast.error("Please sign in to view services");
+      navigate("/auth");
+      return;
+    }
+
+    fetchProviders();
+  }, [user, navigate]);
+
+  useEffect(() => {
+    // Recalculate distances when location changes
+    if (location && allProviders.length > 0) {
+      const providersWithDistance = allProviders.map((provider) => ({
+        ...provider,
+        distance: calculateDistance(
+          location.latitude,
+          location.longitude,
+          Number(provider.latitude),
+          Number(provider.longitude)
+        ),
+      }));
+      setAllProviders(providersWithDistance);
+    }
+  }, [location]);
+
+  const fetchProviders = async () => {
+    const { data, error } = await supabase
+      .from("service_providers")
+      .select("*");
+
+    if (error) {
+      toast.error("Failed to load providers");
+      return;
+    }
+
+    if (data) {
+      // Calculate distances if location available
+      const providersWithDistance = location
+        ? data.map((provider) => ({
+            ...provider,
+            distance: calculateDistance(
+              location.latitude,
+              location.longitude,
+              Number(provider.latitude),
+              Number(provider.longitude)
+            ),
+          }))
+        : data;
+      
+      setAllProviders(providersWithDistance as Provider[]);
+    }
+  };
+
+  let filteredProviders = allProviders.filter((provider) => {
     const matchesSearch = provider.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          provider.specialty.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === "all" || provider.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Sort providers
+  if (sortBy === "distance" && location) {
+    filteredProviders = filteredProviders.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+  } else if (sortBy === "rating") {
+    filteredProviders = filteredProviders.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  }
 
   return (
     <div className="min-h-screen">
@@ -101,30 +118,60 @@ const Services = () => {
             </p>
           </div>
 
-          <div className="mb-8 flex flex-col gap-4 md:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search by name or service..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <div className="mb-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <p className="text-muted-foreground">
+                {location ? (
+                  <>
+                    <MapPin className="inline h-4 w-4 mr-1" />
+                    Showing services near you
+                  </>
+                ) : (
+                  "Location unavailable - showing all services"
+                )}
+              </p>
+              {!location && (
+                <Button variant="outline" size="sm" onClick={requestLocation} disabled={locationLoading}>
+                  <Navigation className="mr-2 h-4 w-4" />
+                  {locationLoading ? "Getting location..." : "Enable Location"}
+                </Button>
+              )}
             </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full md:w-[200px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Healthcare">Healthcare</SelectItem>
-                <SelectItem value="Home Services">Home Services</SelectItem>
-                <SelectItem value="Education">Education</SelectItem>
-                <SelectItem value="Wellness">Wellness</SelectItem>
-                <SelectItem value="Professional Services">Professional</SelectItem>
-              </SelectContent>
-            </Select>
+
+            <div className="flex flex-col gap-4 md:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search by name or service..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="Healthcare">Healthcare</SelectItem>
+                  <SelectItem value="Home Services">Home Services</SelectItem>
+                  <SelectItem value="Education">Education</SelectItem>
+                  <SelectItem value="Wellness">Wellness</SelectItem>
+                  <SelectItem value="Professional Services">Professional</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="distance">Nearest First</SelectItem>
+                  <SelectItem value="rating">Highest Rated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -132,7 +179,7 @@ const Services = () => {
               <Card key={provider.id} className="group overflow-hidden transition-smooth hover:shadow-hover">
                 <div className="aspect-square overflow-hidden">
                   <img
-                    src={provider.image}
+                    src={provider.image_url}
                     alt={provider.name}
                     className="h-full w-full object-cover transition-smooth group-hover:scale-105"
                   />
@@ -154,13 +201,20 @@ const Services = () => {
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                       <span className="font-medium">{provider.rating}</span>
-                      <span className="text-sm text-muted-foreground">({provider.reviews})</span>
+                      <span className="text-sm text-muted-foreground">({provider.review_count})</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span>{provider.location}</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{provider.location_name}</span>
+                    </div>
+                    {provider.distance && (
+                      <span className="text-sm font-medium text-primary">
+                        {provider.distance.toFixed(1)} km
+                      </span>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="border-t p-6">

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -10,43 +10,109 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Star, MapPin, Phone, Mail, Clock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useGeolocation } from "@/hooks/useGeolocation";
 
 const ProviderProfile = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { location, calculateDistance } = useGeolocation();
+  const [provider, setProvider] = useState<any>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [bookingName, setBookingName] = useState("");
   const [bookingEmail, setBookingEmail] = useState("");
   const [bookingMessage, setBookingMessage] = useState("");
 
-  // Mock provider data
-  const provider = {
-    id: 1,
-    name: "Dr. Amira Ben Salem",
-    category: "Healthcare",
-    specialty: "General Practitioner",
-    rating: 4.9,
-    reviewCount: 127,
-    location: "Tunis, Tunisia",
-    verified: true,
-    image: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&h=800&fit=crop",
-    phone: "+216 98 765 432",
-    email: "amira.bensalem@example.tn",
-    description: "Experienced general practitioner with over 10 years of medical practice. Specialized in family medicine and preventive care. Fluent in Arabic, French, and English.",
-    availability: "Mon-Fri: 9AM-6PM, Sat: 9AM-2PM",
-    services: ["General Consultation", "Health Check-ups", "Vaccinations", "Prescriptions"],
-    reviewsList: [
-      { id: 1, author: "Fatima K.", rating: 5, text: "Excellent doctor! Very attentive and professional.", date: "2 weeks ago" },
-      { id: 2, author: "Ahmed M.", rating: 5, text: "Highly recommend. Great diagnosis and treatment.", date: "1 month ago" },
-      { id: 3, author: "Sara B.", rating: 4, text: "Very good experience. Appointment was on time.", date: "1 month ago" }
-    ]
+  useEffect(() => {
+    if (!user) {
+      toast.error("Please sign in to view provider profiles");
+      navigate("/auth");
+      return;
+    }
+
+    fetchProvider();
+    fetchReviews();
+  }, [id, user, navigate]);
+
+  const fetchProvider = async () => {
+    const { data, error } = await supabase
+      .from("service_providers")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) {
+      toast.error("Provider not found");
+      navigate("/services");
+      return;
+    }
+
+    // Calculate distance if location is available
+    let providerWithDistance = { ...data, distance: undefined as number | undefined };
+    if (location) {
+      providerWithDistance.distance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        Number(data.latitude),
+        Number(data.longitude)
+      );
+    }
+
+    setProvider(providerWithDistance);
+    setLoading(false);
   };
 
-  const handleBooking = (e: React.FormEvent) => {
+  const fetchReviews = async () => {
+    const { data } = await supabase
+      .from("reviews")
+      .select("*, profiles(full_name)")
+      .eq("provider_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (data) setReviews(data);
+  };
+
+  const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!user) {
+      toast.error("Please sign in to book services");
+      return;
+    }
+
+    const { error } = await supabase.from("bookings").insert({
+      provider_id: id,
+      user_id: user.id,
+      customer_name: bookingName,
+      customer_email: bookingEmail,
+      message: bookingMessage,
+    });
+
+    if (error) {
+      toast.error("Failed to send booking request");
+      return;
+    }
+
     toast.success("Booking request sent! The provider will contact you soon.");
     setBookingName("");
     setBookingEmail("");
     setBookingMessage("");
   };
+
+  if (loading || !provider) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <div className="flex min-h-screen items-center justify-center">
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -58,7 +124,7 @@ const ProviderProfile = () => {
               <Card className="overflow-hidden">
                 <div className="aspect-video overflow-hidden">
                   <img
-                    src={provider.image}
+                    src={provider.image_url}
                     alt={provider.name}
                     className="h-full w-full object-cover"
                   />
@@ -80,14 +146,17 @@ const ProviderProfile = () => {
                     <div className="flex items-center gap-1">
                       <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
                       <span className="text-xl font-bold">{provider.rating}</span>
-                      <span className="text-muted-foreground">({provider.reviewCount} reviews)</span>
+                      <span className="text-muted-foreground">({provider.review_count} reviews)</span>
                     </div>
                   </div>
 
                   <div className="mb-6 grid gap-4 sm:grid-cols-2">
                     <div className="flex items-center gap-2">
                       <MapPin className="h-5 w-5 text-primary" />
-                      <span>{provider.location}</span>
+                      <span>{provider.location_name}</span>
+                      {provider.distance && (
+                        <span className="text-sm text-primary">({provider.distance.toFixed(1)} km away)</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-5 w-5 text-primary" />
@@ -108,37 +177,49 @@ const ProviderProfile = () => {
                     <p className="text-muted-foreground">{provider.description}</p>
                   </div>
 
-                  <div className="mb-6">
-                    <h2 className="mb-3 text-xl font-bold">Services Offered</h2>
-                    <div className="flex flex-wrap gap-2">
-                      {provider.services.map((service, index) => (
-                        <Badge key={index} variant="outline">
-                          {service}
-                        </Badge>
-                      ))}
+                  {provider.services && provider.services.length > 0 && (
+                    <div className="mb-6">
+                      <h2 className="mb-3 text-xl font-bold">Services Offered</h2>
+                      <div className="flex flex-wrap gap-2">
+                        {provider.services.map((service: string, index: number) => (
+                          <Badge key={index} variant="outline">
+                            {service}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <h2 className="mb-4 text-xl font-bold">Client Reviews</h2>
-                    <div className="space-y-4">
-                      {provider.reviewsList.map((review) => (
-                        <Card key={review.id}>
-                          <CardContent className="p-4">
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="font-medium">{review.author}</span>
-                              <div className="flex items-center gap-1">
-                                {[...Array(review.rating)].map((_, i) => (
-                                  <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                ))}
+                    {reviews.length > 0 ? (
+                      <div className="space-y-4">
+                        {reviews.map((review) => (
+                          <Card key={review.id}>
+                            <CardContent className="p-4">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="font-medium">
+                                  {review.profiles?.full_name || "Anonymous"}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {[...Array(review.rating)].map((_, i) => (
+                                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                            <p className="mb-2 text-sm text-muted-foreground">{review.text}</p>
-                            <span className="text-xs text-muted-foreground">{review.date}</span>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                              {review.comment && (
+                                <p className="mb-2 text-sm text-muted-foreground">{review.comment}</p>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(review.created_at).toLocaleDateString()}
+                              </span>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">No reviews yet</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
