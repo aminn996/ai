@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_logs: {
+        Row: {
+          action_type: string
+          created_at: string
+          details: Json | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           created_at: string | null
@@ -60,27 +92,54 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_status: string | null
+          bio: string | null
           created_at: string | null
           email: string | null
           full_name: string | null
           id: string
+          language_preference: string | null
+          last_login_at: string | null
+          notification_settings: Json | null
           phone: string | null
+          privacy_level: string | null
+          profile_picture_url: string | null
+          theme_mode: string | null
+          timezone: string | null
           updated_at: string | null
         }
         Insert: {
+          account_status?: string | null
+          bio?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
           id: string
+          language_preference?: string | null
+          last_login_at?: string | null
+          notification_settings?: Json | null
           phone?: string | null
+          privacy_level?: string | null
+          profile_picture_url?: string | null
+          theme_mode?: string | null
+          timezone?: string | null
           updated_at?: string | null
         }
         Update: {
+          account_status?: string | null
+          bio?: string | null
           created_at?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
+          language_preference?: string | null
+          last_login_at?: string | null
+          notification_settings?: Json | null
           phone?: string | null
+          privacy_level?: string | null
+          profile_picture_url?: string | null
+          theme_mode?: string | null
+          timezone?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -182,6 +241,41 @@ export type Database = {
           verified?: boolean | null
         }
         Relationships: []
+      }
+      user_feedback: {
+        Row: {
+          category: string
+          comment: string | null
+          created_at: string
+          id: string
+          rating: number
+          user_id: string
+        }
+        Insert: {
+          category: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          rating: number
+          user_id: string
+        }
+        Update: {
+          category?: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          rating?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

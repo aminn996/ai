@@ -19,6 +19,7 @@ export function useAuth() {
         if (session?.user) {
           setTimeout(() => {
             checkAdminStatus(session.user.id);
+            updateLastLogin(session.user.id);
           }, 0);
         } else {
           setIsAdmin(false);
@@ -34,11 +35,23 @@ export function useAuth() {
       
       if (session?.user) {
         checkAdminStatus(session.user.id);
+        updateLastLogin(session.user.id);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const updateLastLogin = async (userId: string) => {
+    try {
+      await supabase
+        .from("profiles")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", userId);
+    } catch (error) {
+      console.error("Failed to update last login:", error);
+    }
+  };
 
   const checkAdminStatus = async (userId: string) => {
     const { data } = await supabase
